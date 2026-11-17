@@ -4,9 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Pre-scaffold: the only file so far is [docs/prd.md](docs/prd.md). It is the source of truth for scope, data sources, methodology and phases. Read it before doing substantial work. No build/lint/test commands exist yet; add them here once the repository skeleton is created.
+The Python tooling is set up (Etapa 0). There is no pipeline code yet. [docs/prd.md](docs/prd.md) is the source of truth for scope, data sources, methodology and phases. Read it before doing substantial work.
 
-The user writes in Portuguese (pt-BR). Reply and write project docs in Portuguese. Code identifiers and dbt model names stay in English.
+The user writes in Portuguese (pt-BR). Reply and write project docs in Portuguese. Code identifiers and dbt model names stay in English. The README is the exception: it is bilingual. `README.md` (English) and `README.pt-BR.md` (Portuguese) must be kept in sync.
+
+## Commands
+
+```bash
+uv sync                              # install deps + dev tools into .venv (Python 3.12, pinned in .python-version)
+uv add <pkg>                         # runtime dependency (needed by the code on Databricks)
+uv add --dev <pkg>                   # dev-only tool (ruff, pre-commit, pytest...)
+uv run ruff check .                  # lint
+uv run ruff format .                 # format
+uv run pre-commit install            # once per clone: enable git hooks
+uv run pre-commit run --all-files    # run all hooks manually
+```
+
+Python is pinned to 3.12 to match Databricks serverless. The ruff version in `.pre-commit-config.yaml` (`rev`) must match the one in `uv.lock`. Line endings are LF via `.gitattributes`.
+
+Environment variables live in `.env` (gitignored, template in `.env.example`). On Databricks they come from the `steam` secret scope.
+
+## Git workflow
+
+GitHub Flow on a public repo with a protected `main` (ruleset: PR required, squash merge only, no force push). One issue per plan stage. Branch names are `<type>/<issue>-<desc>` (e.g. `chore/2-python-setup`). Commit messages and PR titles use Conventional Commits (`feat`, `fix`, `docs`, `chore`, `test`, `refactor`, `ci`), because the PR title becomes the squash commit on `main`. PR bodies follow `.github/pull_request_template.md` and use `Closes #<issue>`.
 
 ## What this project is
 
