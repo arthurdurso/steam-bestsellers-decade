@@ -50,17 +50,18 @@ def explore_ccu(client: httpx.Client) -> None:
     print(f"  -> amostra salva em {path}")
 
 
-def explore_prices(client: httpx.Client) -> None:
-    """Preço e desconto atuais (Store API, não oficial, sem chave).
+def explore_prices(client: httpx.Client, country: str) -> None:
+    """Preço e desconto atuais num país (Store API, não oficial, sem chave).
 
     Aceita vários appids numa chamada só, mas apenas com filters=price_overview.
-    Os valores vêm em centavos: 5999 = US$ 59,99.
+    Os valores vêm em centavos da moeda local: 1000 = 10,00.
+    O parâmetro `country` (cc) define a loja: "us" = dólar, "br" = real.
     """
     url = "https://store.steampowered.com/api/appdetails"
     params = {
         "appids": ",".join(str(appid) for appid in SAMPLE_GAMES),
         "filters": "price_overview",
-        "cc": "us",
+        "cc": country,
     }
     response = client.get(url, params=params)
     response.raise_for_status()
@@ -68,12 +69,13 @@ def explore_prices(client: httpx.Client) -> None:
 
     for appid, name in SAMPLE_GAMES.items():
         price = payload[str(appid)]["data"]["price_overview"]
+        currency = price["currency"]  # código da moeda: USD, BRL...
         print(
-            f"  {name:<28} US$ {price['initial'] / 100:>6.2f} -> US$ {price['final'] / 100:>6.2f}"
-            f"  ({price['discount_percent']}% off)"
+            f"  {name:<28} {currency} {price['initial'] / 100:>7.2f}"
+            f" -> {currency} {price['final'] / 100:>7.2f}  ({price['discount_percent']}% off)"
         )
 
-    path = save_sample("prices", payload)
+    path = save_sample(f"prices_{country}", payload)
     print(f"  -> amostra salva em {path}")
 
 
@@ -83,8 +85,9 @@ def main() -> None:
         print("CCU: jogadores simultâneos")
         explore_ccu(client)
 
-        print("\nPreços: preço cheio -> preço atual")
-        explore_prices(client)
+        for country in ("us", "br"):
+            print(f"\nPreços ({country.upper()}): preço cheio -> preço atual")
+            explore_prices(client, country)
 
 
 if __name__ == "__main__":
