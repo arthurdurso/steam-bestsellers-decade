@@ -24,6 +24,21 @@ Python is pinned to 3.12 to match Databricks serverless. The ruff version in `.p
 
 Environment variables live in `.env` (gitignored, template in `.env.example`). On Databricks they come from the `steam` secret scope.
 
+### Databricks
+
+The CLI is authenticated via OAuth (`databricks auth login`, profile `DEFAULT`). The browser is preferred for exploration, running SQL and monitoring jobs. The CLI is used for secrets and (later) bundle deploys.
+
+```bash
+databricks current-user me                       # check auth
+databricks schemas list steam                    # check UC structure
+# Unity Catalog structure: run setup/01_unity_catalog.sql in the SQL Editor ("Run all"; it is idempotent)
+# Store a secret from .env without exposing it in shell history:
+grep '^STEAM_API_KEY=' .env | cut -d '=' -f2- | tr -d '\r\n' | databricks secrets put-secret steam steam_api_key
+databricks secrets list-secrets steam
+```
+
+The user's shell is Git Bash, which rewrites arguments starting with `/` into Windows paths. Prefix CLI calls that take workspace or volume paths with `MSYS_NO_PATHCONV=1` (e.g. `MSYS_NO_PATHCONV=1 databricks fs ls dbfs:/Volumes/steam/bronze/raw`).
+
 ## Git workflow
 
 GitHub Flow on a public repo with a protected `main` (ruleset: PR required, squash merge only, no force push). One issue per plan stage. Branch names are `<type>/<issue>-<desc>` (e.g. `chore/2-python-setup`). Commit messages and PR titles use Conventional Commits (`feat`, `fix`, `docs`, `chore`, `test`, `refactor`, `ci`), because the PR title becomes the squash commit on `main`. PR bodies follow `.github/pull_request_template.md` and use `Closes #<issue>`.
