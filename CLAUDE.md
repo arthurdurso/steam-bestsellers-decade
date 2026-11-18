@@ -64,7 +64,7 @@ Steam APIs / IsThereAnyDeal / SteamSpy
 - Use **Unity Catalog Volumes**, not DBFS paths.
 - Unity Catalog layout: catalog `steam`, schemas `bronze`/`silver`/`gold`, plus `ci` for CI runs. The landing volume is `steam.bronze.raw`, and Auto Loader checkpoints go under `_checkpoints/`.
 - Re-running a day must be idempotent (no duplicates).
-- Scope is fixed to US/USD prices and a fixed cohort of ~300 paid AAA RPG/Action games (criteria in PRD §4.1).
+- Scope is a fixed cohort of ~300 paid AAA RPG/Action games (criteria in PRD §4.1). Prices are collected for the US store (`cc=us`, USD, used in the main analysis) and the Brazil store (`cc=br`, BRL, secondary regional comparison).
 
 ## dbt conventions
 

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Autor** | Arthur Durso |
-| **Status** | Rascunho v1 |
+| **Status** | Rascunho v1.1 (histórico de mudanças na seção 17) |
 | **Criado em** | 2026-11-06 |
 | **Tipo** | Projeto de portfólio (Engenharia / Analytics Engineering) |
 | **Stack obrigatória** | Databricks + dbt |
@@ -30,6 +30,7 @@ Toda análise e todo modelo do projeto devem servir a essa pergunta.
 5. Como a profundidade do desconto evolui com o **tempo desde o lançamento**?
 6. O lançamento de **DLC** ou de uma **sequência** muda o efeito da promoção no jogo base/antecessor?
 7. Quais publishers têm a estratégia de desconto mais eficiente?
+8. (Secundária) As publishers aplicam a mesma estratégia de preço e de desconto no **Brasil** e nos **EUA**?
 
 ## 3. Objetivos
 
@@ -59,7 +60,9 @@ Coorte **fixa** de jogos, revisada em lotes (novos lançamentos entram periodica
 | Modelo de negócio | Jogo **pago** (free-to-play excluído) |
 
 - **Tamanho-alvo:** ~300 jogos analisados (coleta de ~350 como margem de segurança).
-- **Região:** apenas **EUA / USD**. Preço regional fica fora do escopo.
+- **Regiões:** **EUA / USD** (principal) e **Brasil / BRL** (secundária).
+  - A análise principal (uplift, receita estimada, break-even) usa **USD**. As reviews, nosso proxy de vendas, são globais, então o preço de referência precisa ser um só, e o dólar é a referência da indústria.
+  - O Brasil é coletado desde o início (custa só uma chamada a mais por lote) e permite comparar a estratégia de preço regional das publishers. Os preços brasileiros são definidos por cada publisher e não são uma conversão cambial do dólar: na exploração (Etapa 2), a razão BRL/USD variou de 3,2 a 4,6 entre jogos.
 - **Exemplos esperados:** Baldur's Gate 3, Elden Ring, Cyberpunk 2077, The Witcher 3, Monster Hunter Wilds, Red Dead Redemption 2, Black Myth: Wukong, Kingdom Come: Deliverance II, Clair Obscur: Expedition 33, Hogwarts Legacy.
 
 **Por que RPG/Ação AAA:** CCU alto (sinal forte), preço alto (o desconto tem impacto financeiro relevante), publishers com estratégias bem distintas (descontos agressivos x descontos raros) e eventos claros de DLC e sequências.
@@ -70,7 +73,7 @@ Coorte **fixa** de jogos, revisada em lotes (novos lançamentos entram periodica
 - Vendas e faturamento **reais** (não existem publicamente; o projeto trabalha com **estimativas**).
 - Wishlists, bundles e vendas de DLC.
 - Outras lojas (Epic, GOG) e consoles.
-- Preços regionais, impostos e reembolsos.
+- Preços de outras regiões além de EUA e Brasil; impostos e reembolsos.
 - Análise de sentimento do texto das reviews (candidata a **fase bônus**).
 
 ## 5. Fontes de dados
@@ -78,7 +81,7 @@ Coorte **fixa** de jogos, revisada em lotes (novos lançamentos entram periodica
 | Dado | Fonte | Frequência | Histórico retroativo? |
 |---|---|---|---|
 | Lista de jogos mais jogados | Steam Web API (`ISteamChartsService`)\* | Semanal | ❌ |
-| Preço e desconto | Store API — `appdetails?filters=price_overview` (aceita vários appids por chamada)\* | Diária | ❌ → complementado via **IsThereAnyDeal API** |
+| Preço e desconto (EUA e Brasil) | Store API — `appdetails?filters=price_overview&cc=us` / `cc=br` (aceita vários appids por chamada)\* | Diária | ❌ → complementado via **IsThereAnyDeal API** |
 | Total de reviews (positivas/negativas) | Reviews API — `appreviews/{appid}?json=1` (só o `query_summary`) | Diária | ✅ parcial (histograma de reviews\* / datas das reviews) |
 | Jogadores simultâneos (CCU) | Steam Web API — `ISteamUserStats/GetNumberOfCurrentPlayers` | De hora em hora | ❌ |
 | Ranking de mais vendidos | Steam Web API (`IStoreTopSellersService`)\* | Semanal | ❌ |
@@ -146,6 +149,7 @@ Durante as promoções sazonais todos os jogos descontam e o tráfego da loja in
 | H4 | Jogos com descontos raros e rasos mantêm um uplift maior a cada promoção ("fadiga de desconto" nos demais) |
 | H5 | Promoções do jogo base coincidindo com lançamento de DLC rendem mais uplift |
 | H6 | O lançamento de uma sequência aumenta o efeito da promoção do jogo antecessor |
+| H7 | (Secundária) As publishers não aplicam o mesmo percentual de desconto no Brasil e nos EUA durante a mesma promoção |
 
 ## 8. Arquitetura
 
@@ -193,7 +197,7 @@ Durante as promoções sazonais todos os jogos descontam e o tráfego da loja in
 | Camada | Modelo | Descrição |
 |---|---|---|
 | Source | `bronze.*` | Tabelas carregadas pelo Auto Loader, com `freshness` |
-| Staging | `stg_steam__prices`, `stg_steam__reviews_summary`, `stg_steam__ccu`, `stg_steam__top_sellers`, `stg_steam__apps`, `stg_steam__news`, `stg_itad__price_history` | Limpeza, tipagem, renomeação |
+| Staging | `stg_steam__prices`, `stg_steam__reviews_summary`, `stg_steam__ccu`, `stg_steam__top_sellers`, `stg_steam__apps`, `stg_steam__news`, `stg_itad__price_history` | Limpeza, tipagem, renomeação. Os preços têm uma coluna `country_code` (`us`/`br`) |
 | Snapshot | `snap_game_price` | SCD2: cada mudança de preço vira uma linha |
 | Intermediate | `int_promotions` | Detecta eventos de promoção a partir da série de preços (gaps-and-islands) |
 | Intermediate | `int_game_daily` | 1 linha por jogo/dia: preço, desconto, novas reviews, pico de CCU |
@@ -281,3 +285,10 @@ As datas das promoções sazonais são aproximadas; confirmar no calendário ofi
 | **SCD2** | *Slowly Changing Dimension* tipo 2: histórico versionado de um atributo |
 | **Medallion** | Arquitetura em camadas bronze (cru) → silver (tratado) → gold (negócio) |
 | **Método Boxleiter** | Estimativa de vendas a partir do número de reviews |
+
+## 17. Histórico de mudanças
+
+| Versão | Data | Mudança |
+|---|---|---|
+| v1 | 2026-11-06 | Versão inicial |
+| v1.1 | 2026-11-18 | Brasil/BRL incluído como região secundária na coleta de preços (seção 4.1), com a pergunta derivada 8 e a hipótese H7 |
