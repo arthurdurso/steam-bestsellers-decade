@@ -9,6 +9,7 @@ Uso (a partir da raiz do projeto):
 """
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -79,6 +80,45 @@ def explore_prices(client: httpx.Client, country: str) -> None:
     print(f"  -> amostra salva em {path}")
 
 
+def to_date(unix_timestamp: int) -> str:
+    """Converte um timestamp Unix (segundos desde 1970, em UTC) numa data legível."""
+    return datetime.fromtimestamp(unix_timestamp, tz=UTC).strftime("%Y-%m-%d")
+
+
+def explore_review_histogram(client: httpx.Client) -> None:
+    """Reviews positivas e negativas ao longo do tempo (Store, não oficial, sem chave).
+
+    Substitui o endpoint appreviews, que hoje redireciona para a home da Steam.
+    - "recent": uma entrada por DIA, nos últimos 30 dias.
+    - "rollups": o histórico completo desde o lançamento, agrupado por MÊS
+      (ou por SEMANA, em jogos recentes; ver "rollup_type").
+    """
+    results = {}
+
+    for appid, name in SAMPLE_GAMES.items():
+        url = f"https://store.steampowered.com/appreviewhistogram/{appid}"
+        response = client.get(url)
+        response.raise_for_status()
+        payload = response.json()
+        results[str(appid)] = payload
+
+        histogram = payload["results"]
+        rollups = histogram["rollups"]
+        recent = histogram["recent"]
+        print(
+            f"  {name}: {len(rollups)} {histogram['rollup_type']}s de histórico"
+            f" (desde {to_date(rollups[0]['date'])}), {len(recent)} dias recentes"
+        )
+        for day in recent[-3:]:  # os 3 dias mais recentes
+            print(
+                f"      {to_date(day['date'])}: +{day['recommendations_up']}"
+                f" / -{day['recommendations_down']} reviews"
+            )
+
+    path = save_sample("review_histogram", results)
+    print(f"  -> amostra salva em {path}")
+
+
 def main() -> None:
     # Um único Client reaproveita a conexão entre as chamadas (mais rápido que httpx.get avulso).
     with httpx.Client(timeout=30) as client:
@@ -88,6 +128,9 @@ def main() -> None:
         for country in ("us", "br"):
             print(f"\nPreços ({country.upper()}): preço cheio -> preço atual")
             explore_prices(client, country)
+
+        print("\nHistograma de reviews: histórico e últimos dias")
+        explore_review_histogram(client)
 
 
 if __name__ == "__main__":
