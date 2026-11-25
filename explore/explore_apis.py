@@ -9,12 +9,18 @@ Uso (a partir da raiz do projeto):
 """
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
+from dotenv import load_dotenv
 
 SAMPLES_DIR = Path("data/samples")
+
+# Identificação do programa nas requisições. Sem isso, o Cloudflare da
+# IsThereAnyDeal bloqueia a chamada (erro 403, "error code: 1010").
+USER_AGENT = "steam-promo-strategy/0.1 (+https://github.com/arthurdurso/steam-promo-impact)"
 
 # Jogos usados como exemplo na exploração: appid → nome.
 # O appid é o identificador do jogo na Steam (aparece na URL da loja).
@@ -119,9 +125,99 @@ def explore_review_histogram(client: httpx.Client) -> None:
     print(f"  -> amostra salva em {path}")
 
 
+def explore_top_sellers(client: httpx.Client, week_start: datetime | None = None) -> None:
+    """Ranking semanal de mais vendidos da Steam (Web API, sem chave).
+
+    - O parâmetro vai como JSON em `input_json`, com o país dentro de "context".
+    - Devolve o top 100 de uma semana. As semanas da Steam começam na terça-feira.
+    - Com "start_date", devolve a semana que contém essa data (funciona desde 2016).
+    """
+    url = "https://api.steampowered.com/IStoreTopSellersService/GetWeeklyTopSellers/v1/"
+    request = {
+        "context": {"language": "english", "country_code": "US"},
+        "page_start": 0,
+        "page_count": 100,
+    }
+    if week_start is not None:
+        request["start_date"] = int(week_start.timestamp())
+
+    response = client.get(url, params={"input_json": json.dumps(request)})
+    response.raise_for_status()
+    payload = response.json()
+
+    ranking = payload["response"]
+    week = to_date(ranking["start_date"])
+    print(f"  Semana iniciada em {week}: {len(ranking['ranks'])} posições")
+
+    for entry in ranking["ranks"][:5]:
+        print(
+            f"    #{entry['rank']:<4} {entry['item']['name']:<40}"
+            f" (semana anterior: #{entry['last_week_rank']})"
+        )
+
+    # Onde estão os nossos jogos de exemplo nesta semana?
+    positions = {entry["appid"]: entry["rank"] for entry in ranking["ranks"]}
+    for appid, name in SAMPLE_GAMES.items():
+        position = positions.get(appid)
+        print(f"    {name:<28} {'#' + str(position) if position else 'fora do top 100'}")
+
+    path = save_sample(f"top_sellers_{week}", payload)
+    print(f"  -> amostra salva em {path}")
+
+
+def explore_itad_history(client: httpx.Client, api_key: str, country: str) -> None:
+    """Histórico de preços na loja Steam (IsThereAnyDeal API, exige chave).
+
+    São duas chamadas por jogo:
+    1. lookup: traduz o appid da Steam para o id interno da IsThereAnyDeal.
+    2. history: um registro a CADA MUDANÇA de preço, do mais novo para o mais antigo.
+       Sem o parâmetro "since", a API devolve só os últimos meses.
+    """
+    base_url = "https://api.isthereanydeal.com"
+    results = {}
+
+    for appid, name in SAMPLE_GAMES.items():
+        lookup = client.get(f"{base_url}/games/lookup/v1", params={"key": api_key, "appid": appid})
+        lookup.raise_for_status()
+        game_id = lookup.json()["game"]["id"]
+
+        history = client.get(
+            f"{base_url}/games/history/v2",
+            params={
+                "key": api_key,
+                "id": game_id,
+                "shops": 61,  # 61 = loja Steam
+                "country": country.upper(),
+                "since": "2016-01-01T00:00:00Z",
+            },
+        )
+        history.raise_for_status()
+        events = history.json()
+        results[str(appid)] = {"lookup": lookup.json(), "history": events}
+
+        promotions = [event for event in events if event["deal"]["cut"] > 0]
+        lowest = min(events, key=lambda event: event["deal"]["price"]["amount"])
+        print(
+            f"  {name:<28} {len(events):>3} mudanças de preço desde {events[-1]['timestamp'][:10]},"
+            f" {len(promotions)} entradas em promoção"
+        )
+        print(
+            f"      menor preço: {lowest['deal']['price']['currency']}"
+            f" {lowest['deal']['price']['amount']:.2f} ({lowest['deal']['cut']}% off)"
+            f" em {lowest['timestamp'][:10]}"
+        )
+
+    path = save_sample(f"itad_history_{country}", results)
+    print(f"  -> amostra salva em {path}")
+
+
 def main() -> None:
+    # Lê o arquivo .env e coloca as variáveis no ambiente (os.environ).
+    load_dotenv()
+    itad_api_key = os.environ["ITAD_API_KEY"]
+
     # Um único Client reaproveita a conexão entre as chamadas (mais rápido que httpx.get avulso).
-    with httpx.Client(timeout=30) as client:
+    with httpx.Client(timeout=30, headers={"User-Agent": USER_AGENT}) as client:
         print("CCU: jogadores simultâneos")
         explore_ccu(client)
 
@@ -131,6 +227,16 @@ def main() -> None:
 
         print("\nHistograma de reviews: histórico e últimos dias")
         explore_review_histogram(client)
+
+        print("\nRanking de mais vendidos (EUA): semana atual")
+        explore_top_sellers(client)
+
+        print("\nRanking de mais vendidos (EUA): Winter Sale de 2025")
+        explore_top_sellers(client, week_start=datetime(2025, 12, 23, tzinfo=UTC))
+
+        for country in ("us", "br"):
+            print(f"\nHistórico de preços IsThereAnyDeal ({country.upper()})")
+            explore_itad_history(client, itad_api_key, country)
 
 
 if __name__ == "__main__":
