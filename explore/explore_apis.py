@@ -211,6 +211,64 @@ def explore_itad_history(client: httpx.Client, api_key: str, country: str) -> No
     print(f"  -> amostra salva em {path}")
 
 
+def explore_metadata(client: httpx.Client) -> None:
+    """Metadados completos de cada jogo (Store API, não oficial, sem chave).
+
+    Sem o filtro price_overview, a API só aceita UM appid por chamada.
+    `l=english` fixa o idioma: a data de lançamento vem como texto ("Feb 24, 2022")
+    e mudaria de formato em outro idioma.
+    """
+    url = "https://store.steampowered.com/api/appdetails"
+    results = {}
+
+    for appid in SAMPLE_GAMES:
+        response = client.get(url, params={"appids": appid, "cc": "us", "l": "english"})
+        response.raise_for_status()
+        payload = response.json()
+        results[str(appid)] = payload
+
+        game = payload[str(appid)]["data"]
+        genres = ", ".join(genre["description"] for genre in game["genres"])
+        print(f"  {game['name']} ({game['type']}, gratuito: {game['is_free']})")
+        print(f"      publishers:    {game['publishers']}")
+        print(f"      developers:    {game['developers']}")
+        print(f"      lançamento:    {game['release_date']['date']}")
+        print(f"      gêneros:       {genres}")
+        print(f"      total reviews: {game['recommendations']['total']:,}")
+
+    path = save_sample("metadata", results)
+    print(f"  -> amostra salva em {path}")
+
+
+def explore_ptax(client: httpx.Client, start: str, end: str) -> None:
+    """Cotação oficial do dólar (PTAX) no período (API de dados abertos do Banco Central).
+
+    As datas vão no formato americano MM-DD-AAAA, entre aspas simples.
+    Só existem cotações em dias úteis: fins de semana e feriados não aparecem.
+    """
+    url = (
+        "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/"
+        "CotacaoDolarPeriodo(dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)"
+    )
+    params = {
+        "@dataInicial": f"'{start}'",
+        "@dataFinalCotacao": f"'{end}'",
+        "$format": "json",
+    }
+    response = client.get(url, params=params)
+    response.raise_for_status()
+    payload = response.json()
+
+    for quote in payload["value"]:
+        print(
+            f"  {quote['dataHoraCotacao'][:10]}:"
+            f" compra R$ {quote['cotacaoCompra']:.4f} | venda R$ {quote['cotacaoVenda']:.4f}"
+        )
+
+    path = save_sample("ptax", payload)
+    print(f"  -> amostra salva em {path}")
+
+
 def main() -> None:
     # Lê o arquivo .env e coloca as variáveis no ambiente (os.environ).
     load_dotenv()
@@ -237,6 +295,12 @@ def main() -> None:
         for country in ("us", "br"):
             print(f"\nHistórico de preços IsThereAnyDeal ({country.upper()})")
             explore_itad_history(client, itad_api_key, country)
+
+        print("\nMetadados dos jogos")
+        explore_metadata(client)
+
+        print("\nPTAX (Banco Central): semana da Winter Sale de 2025")
+        explore_ptax(client, start="12-18-2025", end="12-24-2025")
 
 
 if __name__ == "__main__":
