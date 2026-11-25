@@ -1,17 +1,28 @@
-# Steam Promo Impact
+# Steam Promo Strategy
 
 [English](README.md) | **Português**
 
-> **As promoções na Steam compensam para as publishers de jogos AAA de RPG/Ação? Para quem, quando e de que forma?**
+> **Como as publishers de jogos AAA de RPG/Ação usam promoções na Steam, e o que acontece com a posição desses jogos no ranking de mais vendidos quando elas o fazem?**
 
-A Steam não divulga dados de vendas nem de faturamento. Este projeto constrói um pipeline de dados que coleta sinais públicos (preços e descontos, número de reviews, jogadores simultâneos, ranking de mais vendidos e notícias/DLCs), modela cada promoção como um evento e **estima o impacto dela pela ótica da publisher**: aumento de vendas, receita estimada contra um contrafactual e ponto de equilíbrio.
+Este projeto constrói um pipeline de dados que acompanha os preços, os descontos e o ranking semanal de mais vendidos de ~300 jogos AAA de RPG/Ação na Steam. Ele modela cada promoção como um evento e responde a duas perguntas:
 
-> 🚧 **Em construção.** A coleta de dados está sendo desenvolvida. Veja o [roadmap](#roadmap).
+1. **Estratégia de preço:** quanto tempo cada publisher espera até o primeiro desconto, com que frequência e profundidade dá desconto, e como isso muda conforme o jogo envelhece.
+2. **Promoções e o ranking:** em que posição do ranking semanal de mais vendidos da Steam o jogo está antes, durante e depois de cada promoção.
+
+Como extra, compara os **preços do Brasil e dos EUA**, convertendo pelo câmbio oficial (PTAX) do Banco Central.
+
+> 🚧 **Em construção.** A exploração das APIs está em andamento. Veja o [roadmap](#roadmap).
+
+## Só fatos, por princípio
+
+A Steam não divulga dados de vendas. Em vez de estimar vendas a partir de sinais indiretos, este projeto **só faz afirmações que podem ser verificadas diretamente nos dados**: os preços praticados, os descontos aplicados e o ranking que a própria Steam publica.
+
+As conclusões são escritas como **associações** ("o jogo subiu no ranking durante a promoção"), e nunca como causas ("a promoção fez o jogo subir"). Outras coisas, como updates ou lançamentos de DLC, podem acontecer ao mesmo tempo.
 
 ## Arquitetura
 
 ```
-APIs da Steam / IsThereAnyDeal / SteamSpy
+APIs da Steam / IsThereAnyDeal / SteamSpy / Banco Central (PTAX)
   → Ingestão em Python (Databricks Lakeflow Jobs)  → JSON cru num Volume do Unity Catalog
   → Auto Loader                                    → bronze (Delta)
   → dbt                                            → silver / gold
@@ -22,7 +33,7 @@ APIs da Steam / IsThereAnyDeal / SteamSpy
 
 | Camada | Ferramentas |
 |---|---|
-| Ingestão | Python 3.12, httpx, tenacity |
+| Ingestão | Python 3.12, httpx |
 | Plataforma | Databricks Free Edition: Unity Catalog, Volumes, Delta Lake, Auto Loader, Lakeflow Jobs |
 | Transformação | dbt Core + dbt-databricks |
 | Engenharia | uv, ruff, pre-commit, Databricks Asset Bundles, GitHub Actions |
@@ -31,8 +42,8 @@ APIs da Steam / IsThereAnyDeal / SteamSpy
 
 | Bloco | Escopo | Status |
 |---|---|---|
-| A — Fundação | Repositório, ferramentas, setup do Databricks | 🔄 Em andamento |
-| B — Conhecer os dados | Exploração das APIs, coorte de jogos | ⏳ |
+| A — Fundação | Repositório, ferramentas, setup do Databricks | ✅ Concluído |
+| B — Conhecer os dados | Exploração das APIs, coorte de jogos | 🔄 Em andamento |
 | C — Ingestão | Coletores, agendamento, backfill histórico | ⏳ |
 | D — Bronze | Auto Loader | ⏳ |
 | E — dbt | Staging, snapshot de preço (SCD2), eventos de promoção, CI | ⏳ |
@@ -56,8 +67,4 @@ cp .env.example .env           # depois preencha as suas API keys
 
 ## Documentação
 
-- [Documento de requisitos (PRD)](docs/prd.md): escopo, fontes de dados, metodologia, hipóteses e riscos.
-
-## Sobre os dados
-
-Todos os números de vendas e receita deste projeto são **estimativas** construídas a partir de sinais públicos, principalmente a velocidade de reviews e os jogadores simultâneos. Eles servem para comparar promoções entre si, não para informar vendas reais. A metodologia e as limitações estão documentadas no PRD.
+- [Documento de requisitos (PRD)](docs/prd.md): escopo, fontes de dados, definição das métricas, hipóteses e riscos. A seção 18 explica por que o projeto deixou de estimar vendas e passou a usar só fatos.

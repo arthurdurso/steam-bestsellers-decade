@@ -1,17 +1,28 @@
-# Steam Promo Impact
+# Steam Promo Strategy
 
 **English** | [Português](README.pt-BR.md)
 
-> **Do Steam promotions pay off for AAA RPG/Action publishers? For whom, when and how?**
+> **How do AAA RPG/Action publishers use promotions on Steam, and what happens to those games' position in the top-sellers ranking when they do?**
 
-Steam does not publish sales or revenue data. This project builds a data pipeline that collects public signals (prices and discounts, review counts, concurrent players, top-seller rankings and news/DLC events), models every promotion as an event, and **estimates its impact from the publisher's point of view**: sales uplift, estimated revenue against a counterfactual, and break-even.
+This project builds a data pipeline that tracks the prices, discounts and weekly top-sellers ranking of ~300 AAA RPG/Action games on Steam. It models every promotion as an event and answers two questions:
 
-> 🚧 **Work in progress.** Data collection is being built. See the [roadmap](#roadmap).
+1. **Pricing strategy:** how long each publisher waits before the first discount, how often and how deeply it discounts, and how that changes as a game ages.
+2. **Promotions and the ranking:** where a game sits in Steam's weekly top-sellers ranking before, during and after each promotion.
+
+As an extra, it compares **Brazil and US prices**, converting with the official exchange rate (PTAX) from Brazil's Central Bank.
+
+> 🚧 **Work in progress.** API exploration is underway. See the [roadmap](#roadmap).
+
+## Fact-only by design
+
+Steam does not publish sales data. Instead of estimating sales from indirect signals, this project **only makes claims that can be verified directly in the data**: prices actually charged, discounts actually applied, and the ranking Steam itself publishes.
+
+Findings are stated as **associations** ("the game climbed the ranking during the promotion"), never as causes ("the promotion made it climb"). Other things, such as updates or DLC launches, can happen at the same time.
 
 ## Architecture
 
 ```
-Steam APIs / IsThereAnyDeal / SteamSpy
+Steam APIs / IsThereAnyDeal / SteamSpy / Central Bank of Brazil (PTAX)
   → Python ingestion (Databricks Lakeflow Jobs)  → raw JSON in a Unity Catalog Volume
   → Auto Loader                                  → bronze (Delta)
   → dbt                                          → silver / gold
@@ -22,7 +33,7 @@ Steam APIs / IsThereAnyDeal / SteamSpy
 
 | Layer | Tools |
 |---|---|
-| Ingestion | Python 3.12, httpx, tenacity |
+| Ingestion | Python 3.12, httpx |
 | Platform | Databricks Free Edition: Unity Catalog, Volumes, Delta Lake, Auto Loader, Lakeflow Jobs |
 | Transformation | dbt Core + dbt-databricks |
 | Engineering | uv, ruff, pre-commit, Databricks Asset Bundles, GitHub Actions |
@@ -31,8 +42,8 @@ Steam APIs / IsThereAnyDeal / SteamSpy
 
 | Block | Scope | Status |
 |---|---|---|
-| A — Foundation | Repository, tooling, Databricks setup | 🔄 In progress |
-| B — Know the data | API exploration, game cohort | ⏳ |
+| A — Foundation | Repository, tooling, Databricks setup | ✅ Done |
+| B — Know the data | API exploration, game cohort | 🔄 In progress |
 | C — Ingestion | Collectors, scheduling, historical backfill | ⏳ |
 | D — Bronze | Auto Loader | ⏳ |
 | E — dbt | Staging, price snapshot (SCD2), promotion events, CI | ⏳ |
@@ -56,8 +67,4 @@ cp .env.example .env           # then fill in your API keys
 
 ## Documentation
 
-- [Product requirements (PRD)](docs/prd.md) (in Portuguese): scope, data sources, methodology, hypotheses and risks.
-
-## A note on the data
-
-All sales and revenue figures in this project are **estimates** built from public proxies, mainly review velocity and concurrent players. They are meant to compare promotions with each other, not to report real sales. The methodology and its limitations are documented in the PRD.
+- [Product requirements (PRD)](docs/prd.md) (in Portuguese): scope, data sources, metric definitions, hypotheses and risks. Section 18 explains why the project moved from sales estimates to a fact-only design.

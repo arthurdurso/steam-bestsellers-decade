@@ -45,14 +45,16 @@ GitHub Flow on a public repo with a protected `main` (ruleset: PR required, squa
 
 ## What this project is
 
-A portfolio data project: **"Do Steam promotions pay off for AAA RPG/Action publishers?"** Steam publishes no sales data, so the pipeline collects proxies (price/discount, daily review counts, hourly concurrent players, top-seller rank, news/DLC events), models each promotion as an event, and estimates uplift, revenue vs. a counterfactual and break-even (`1 / (1 - discount)`).
+A portfolio data project: **"How do AAA RPG/Action publishers use promotions on Steam, and what happens to those games' position in the top-sellers ranking when they do?"** The core is (1) publisher pricing strategy and (2) promotions vs. the weekly top-sellers rank. A Brazil × US regional pricing comparison (using the official PTAX exchange rate) is an extra.
+
+**Fact-only principle (PRD v2.0 §3):** every claim must be directly verifiable in the data. Do not introduce sales, revenue or owner estimates, the Boxleiter method, or CCU/reviews as sales signals. Phrase findings as association ("happened together"), never causation. Steam publishes no sales data, and this is a deliberate scope decision.
 
 Required stack: **Databricks (Free Edition) + dbt**. Everything has to run serverless within Free Edition quotas, so prefer incremental processing everywhere.
 
 ## Architecture (decided)
 
 ```
-Steam APIs / IsThereAnyDeal / SteamSpy
+Steam APIs / IsThereAnyDeal / SteamSpy / Banco Central (PTAX)
   → Python ingestion (Lakeflow Job) writes raw JSON only
   → UC Volume  /Volumes/steam/bronze/raw/<source>/dt=YYYY-MM-DD/...
   → Auto Loader (cloudFiles, trigger availableNow) → steam.bronze.<table>
@@ -64,13 +66,14 @@ Steam APIs / IsThereAnyDeal / SteamSpy
 - Use **Unity Catalog Volumes**, not DBFS paths.
 - Unity Catalog layout: catalog `steam`, schemas `bronze`/`silver`/`gold`, plus `ci` for CI runs. The landing volume is `steam.bronze.raw`, and Auto Loader checkpoints go under `_checkpoints/`.
 - Re-running a day must be idempotent (no duplicates).
-- Scope is fixed to US/USD prices and a fixed cohort of ~300 paid AAA RPG/Action games (criteria in PRD §4.1).
+- Scope is a fixed cohort of ~300 paid AAA RPG/Action games (criteria in PRD §5.1). Prices are collected for the US store (`cc=us`, USD, used in the core analysis) and the Brazil store (`cc=br`, BRL, regional extra).
+- Sources (PRD §6): daily prices (US + BR), weekly top sellers, weekly metadata, IsThereAnyDeal price history, daily PTAX. All collection is daily or weekly; there is no hourly job.
 
 ## dbt conventions
 
 - `stg_<source>__<entity>` (e.g. `stg_steam__prices`, `stg_itad__price_history`), `snap_*`, `int_*`, `dim_*`, `fct_*`, `mart_*`.
-- Price history is an SCD2 snapshot (`snap_game_price`). `int_promotions` derives promotion events from the price series (gaps-and-islands).
-- The reviews→sales multiplier (Boxleiter method) is a `dbt var`, not a hardcoded constant, because the analysis runs sensitivity checks at several values.
+- Price history is an SCD2 snapshot (`snap_game_price`). `int_promotions` derives promotion events from the price series (gaps-and-islands) and classifies them as seasonal or publisher-run using the `steam_seasonal_sales` seed.
+- Metric definitions (promotion, time to first discount, rank windows, regional price ratios) live in PRD §7. Use them exactly.
 - Packages: `dbt_utils`, `dbt_expectations`. Sources declare `freshness`.
 
 ## Tooling decisions
@@ -82,10 +85,15 @@ Steam APIs / IsThereAnyDeal / SteamSpy
 ## External API constraints
 
 - Store API (`store.steampowered.com/api/appdetails`) is unofficial and rate-limited to ~200 requests per 5 minutes. Use retries with backoff and batch appids with `filters=price_overview`.
-- Several endpoints (`ISteamChartsService`, `IStoreTopSellersService`, the review histogram) are undocumented and still need validation in Phase 1 (PRD §5).
+- Asking `appdetails` for several appids at once only works with `filters=price_overview` (otherwise HTTP 400). Prices come in cents of the local currency.
+- `IStoreTopSellersService/GetWeeklyTopSellers` needs no key, but the country must go inside `context` in `input_json`. It returns the top 100 of a week (weeks start on Tuesday), accepts past weeks via `start_date` (tested back to 2016) and ranks by revenue (free games and hardware appear).
+- IsThereAnyDeal needs the key in the URL, a custom `User-Agent` (otherwise Cloudflare returns 403 "error code: 1010") and an explicit `since` (otherwise only recent months come back). Never log full ITAD URLs.
+- The `appreviews` endpoint is broken (redirects to the Steam home page).
+- Full endpoint details and decisions: [docs/decisions/001-endpoints.md](docs/decisions/001-endpoints.md).
 - Never scrape SteamDB, which its terms of use forbid. Use the IsThereAnyDeal API for historical prices.
 - The Steam API key goes in Databricks Secrets / env vars.
+- Exploration findings and endpoint decisions are recorded in `docs/decisions/`.
 
-## Timeline pressure
+## Pace
 
-Ingestion (Phase 1) is the top priority. Collection has to be running before the Steam Autumn Sale (late Nov 2026) to capture a pre-sale baseline. Concurrent players and top-seller data cannot be backfilled.
+The project is built slowly, one file at a time, so the user understands every line. There is no fixed deadline: if a seasonal sale passes before collection is live, the analysis uses a later one, and IsThereAnyDeal covers past prices.
