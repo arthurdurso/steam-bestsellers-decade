@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Autor** | Arthur Durso |
-| **Status** | v2.0 (histórico de mudanças na seção 19) |
+| **Status** | v2.1 (histórico de mudanças na seção 19) |
 | **Criado em** | 2026-11-06 |
 | **Tipo** | Projeto de portfólio (Engenharia / Analytics Engineering) |
 | **Stack obrigatória** | Databricks + dbt |
@@ -105,13 +105,15 @@ Coorte **fixa** de jogos, revisada em lotes (novos lançamentos entram periodica
 |---|---|---|---|---|
 | Preço e desconto (EUA e Brasil) | Store API: `appdetails?filters=price_overview&cc=us` / `cc=br` (vários appids por chamada)\* | Diária | ❌ → complementado pela **IsThereAnyDeal** | Núcleos 1 e 2, extra |
 | Histórico de preços | **IsThereAnyDeal API** (API key gratuita) | Carga única + atualização | ✅ Anos de histórico | Núcleo 1 (estratégia ao longo da vida do jogo) |
-| Ranking de mais vendidos (EUA) | Steam Web API: `IStoreTopSellersService/GetWeeklyTopSellers`\* | Semanal | ⚠️ **A validar**: o endpoint parece aceitar uma data de início, o que permitiria reconstruir semanas passadas | Núcleo 2 |
+| Ranking de mais vendidos (EUA, top 100) | Steam Web API: `IStoreTopSellersService/GetWeeklyTopSellers`\* | Semanal | ✅ Semanas passadas desde 2016 | Núcleo 2 |
 | Metadados (publisher, desenvolvedora, data de lançamento, gêneros, total de reviews) | Store API: `appdetails` completo\* | Semanal | — | Coorte, dimensões |
 | Tags da comunidade | SteamSpy | Carga única (coorte) | — | Critério de gênero |
 | Câmbio USD/BRL (PTAX) | **API de dados abertos do Banco Central** | Diária | ✅ | Extra (preço do Brasil em dólar) |
 | Calendário das promoções sazonais | Anúncios oficiais da Steam, registrados num seed do dbt | A cada evento | ✅ | Classificar promoções em sazonais × próprias |
 
-\* Endpoints não oficiais ou pouco documentados: **validar na Etapa 2** (registro em `docs/decisions/001-endpoints.md`).
+\* Endpoints não oficiais ou pouco documentados, validados na Etapa 2. Detalhes, parâmetros e pegadinhas em [`docs/decisions/001-endpoints.md`](decisions/001-endpoints.md).
+
+**O que o ranking mede:** a Steam ordena por **receita** (aparecem jogos gratuitos, por compras dentro do jogo, e até hardware). As conclusões falam em "ranking de mais vendidos por receita", nunca em cópias vendidas.
 
 **Restrições:**
 - Store API: limite de ~200 requisições a cada 5 minutos → retry com backoff obrigatório.
@@ -274,8 +276,8 @@ O ritmo prioriza o aprendizado: cada etapa avança só quando tudo foi entendido
 
 | Risco | Impacto | Mitigação |
 |---|---|---|
-| O endpoint de ranking exigir permissões ou não aceitar datas passadas | Núcleo 2 com pouco histórico | Validar na Etapa 2. Se não houver passado, o núcleo 2 cobre as promoções a partir do início da coleta |
-| O ranking cobrir só o topo (ex.: top 100) | Jogos menos vendidos aparecem sempre "fora do ranking" | Registrar "fora do top N" como fato; analisar sobretudo os jogos que entram e saem do ranking |
+| O ranking cobrir só o top 100 | Jogos menos vendidos aparecem sempre "fora do ranking" | Registrar "fora do top 100" como fato; analisar sobretudo os jogos que entram e saem do ranking |
+| Um jogo ter várias publishers | Ambiguidade em "estratégia por publisher" | Tabela-ponte jogo ↔ publisher no dbt, com regra documentada |
 | Confundir associação com causa | Conclusões enganosas | Princípio da seção 3; linguagem revisada em toda conclusão |
 | Endpoints não oficiais mudarem ou caírem | Coleta interrompida | Validar na Etapa 2, monitorar com `source freshness`, guardar o JSON cru. Já aconteceu: o endpoint `appreviews` deixou de funcionar |
 | Lacunas no histórico da IsThereAnyDeal | Estratégia de preço incompleta para alguns jogos | Registrar a cobertura por jogo; excluir das métricas os jogos sem histórico suficiente |
@@ -286,8 +288,7 @@ O ritmo prioriza o aprendizado: cada etapa avança só quando tudo foi entendido
 | Decisão | Quando decidir |
 |---|---|
 | Formato da análise final: notebook, dashboard ou ambos | Fase de análise |
-| Tamanho do ranking a coletar (top 100, 250...) | Etapa 2, conforme o que o endpoint permitir |
-| Lista curada de publishers AAA e critérios finais da coorte | Etapa 3 |
+| Lista curada de publishers AAA e critérios finais da coorte (incluindo o recorte "a partir de 2016", que excluiria o The Witcher 3, lançado em 2015) | Etapa 3 |
 | Foco da vitrine: Engenharia de Dados, Analytics Engineering ou Análise | Antes da fase de vitrine |
 
 ## 17. Glossário
@@ -310,6 +311,9 @@ Registro das descobertas que mudaram o projeto. O detalhe técnico fica em `docs
 - O endpoint `appreviews` deixou de funcionar (redireciona para a página inicial da Steam).
 - O preço brasileiro é definido por publisher, e não convertido do dólar (razão BRL/USD de 3,2 a 4,6).
 - As reviews não indicam a data da compra: quem avalia pode ter comprado dias ou meses antes. Esse foi o principal motivo da mudança para um projeto baseado só em fatos (v2.0).
+- O ranking de mais vendidos não precisa de chave e devolve semanas passadas desde 2016. Isso permite estudar anos de promoções no núcleo 2, em vez de só as promoções a partir do início da coleta.
+- O ranking é por receita: aparecem jogos gratuitos e hardware.
+- Um jogo pode ter mais de uma publisher (Elden Ring: FromSoftware e Bandai Namco).
 
 ## 19. Histórico de mudanças
 
@@ -318,3 +322,4 @@ Registro das descobertas que mudaram o projeto. O detalhe técnico fica em `docs
 | v1 | 2026-11-06 | Versão inicial: estimar se as promoções compensam financeiramente |
 | v1.1 | 2026-11-18 | Brasil/BRL incluído como região secundária na coleta de preços |
 | v2.0 | 2026-11-18 | **Reformulação para usar só fatos.** Saem as estimativas de vendas e receita (método Boxleiter, ponto de equilíbrio) e os sinais CCU, reviews e notícias. A pergunta passa a ser a estratégia de preço das publishers (núcleo 1) e a associação entre promoções e o ranking de mais vendidos (núcleo 2), com Brasil × EUA como extra. Entram o câmbio PTAX e o calendário de promoções sazonais |
+| v2.1 | 2026-11-25 | Fim da exploração (Etapa 2): ranking validado (sem chave, top 100, histórico desde 2016, ordenado por receita); risco do ranking sem histórico eliminado; risco de múltiplas publishers incluído; link para `docs/decisions/001-endpoints.md` |

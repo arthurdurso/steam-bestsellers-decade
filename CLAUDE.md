@@ -86,7 +86,10 @@ Steam APIs / IsThereAnyDeal / SteamSpy / Banco Central (PTAX)
 
 - Store API (`store.steampowered.com/api/appdetails`) is unofficial and rate-limited to ~200 requests per 5 minutes. Use retries with backoff and batch appids with `filters=price_overview`.
 - Asking `appdetails` for several appids at once only works with `filters=price_overview` (otherwise HTTP 400). Prices come in cents of the local currency.
-- `IStoreTopSellersService` (weekly top sellers) returns an empty response without an API key, and whether it accepts past dates is still to be validated (Etapa 2). The `appreviews` endpoint is broken (redirects to the Steam home page).
+- `IStoreTopSellersService/GetWeeklyTopSellers` needs no key, but the country must go inside `context` in `input_json`. It returns the top 100 of a week (weeks start on Tuesday), accepts past weeks via `start_date` (tested back to 2016) and ranks by revenue (free games and hardware appear).
+- IsThereAnyDeal needs the key in the URL, a custom `User-Agent` (otherwise Cloudflare returns 403 "error code: 1010") and an explicit `since` (otherwise only recent months come back). Never log full ITAD URLs.
+- The `appreviews` endpoint is broken (redirects to the Steam home page).
+- Full endpoint details and decisions: [docs/decisions/001-endpoints.md](docs/decisions/001-endpoints.md).
 - Never scrape SteamDB, which its terms of use forbid. Use the IsThereAnyDeal API for historical prices.
 - The Steam API key goes in Databricks Secrets / env vars.
 - Exploration findings and endpoint decisions are recorded in `docs/decisions/`.
