@@ -1,70 +1,61 @@
-# Steam Promo Strategy
+# A Decade of Steam Bestsellers
 
 **English** | [Português](README.pt-BR.md)
 
-> **How do AAA RPG/Action publishers use promotions on Steam, and what happens to those games' position in the top-sellers ranking when they do?**
+> **Ten years of Steam's weekly top-sellers ranking (2016 → today), modeled with dbt on Databricks.**
 
-This project builds a data pipeline that tracks the prices, discounts and weekly top-sellers ranking of ~300 AAA RPG/Action games on Steam. It models every promotion as an event and answers two questions:
+Every week Steam publishes the 100 games that grossed the most. This project collects that history (~570 weeks, ~57k positions) and answers questions such as:
 
-1. **Pricing strategy:** how long each publisher waits before the first discount, how often and how deeply it discounts, and how that changes as a game ages.
-2. **Promotions and the ranking:** where a game sits in Steam's weekly top-sellers ranking before, during and after each promotion.
+- Which games stayed the longest in the top 100?
+- Which publishers dominated each year?
+- How did genres rise and fall over a decade?
+- How long does a new release last in the ranking?
+- What changes during the Summer and Winter Sales?
 
-As an extra, it compares **Brazil and US prices**, converting with the official exchange rate (PTAX) from Brazil's Central Bank.
+> 🚧 **Work in progress.** See the [roadmap](#roadmap).
 
-> 🚧 **Work in progress.** API exploration is underway. See the [roadmap](#roadmap).
+## Fact-only
 
-## Fact-only by design
-
-Steam does not publish sales data. Instead of estimating sales from indirect signals, this project **only makes claims that can be verified directly in the data**: prices actually charged, discounts actually applied, and the ranking Steam itself publishes.
-
-Findings are stated as **associations** ("the game climbed the ranking during the promotion"), never as causes ("the promotion made it climb"). Other things, such as updates or DLC launches, can happen at the same time.
+Every claim is verifiable in Steam's own ranking. The ranking is ordered by **revenue**, so the project talks about "top-grossing", never "copies sold".
 
 ## Architecture
 
 ```
-Steam APIs / IsThereAnyDeal / SteamSpy / Central Bank of Brazil (PTAX)
-  → Python ingestion (Databricks Lakeflow Jobs)  → raw JSON in a Unity Catalog Volume
-  → Auto Loader                                  → bronze (Delta)
-  → dbt                                          → silver / gold
-  → Notebook and/or dashboard
+Steam API → Python ingestion → raw JSON in a Unity Catalog Volume
+          → bronze (Delta) → dbt (staging → marts) → dashboard
 ```
-
-## Tech stack
 
 | Layer | Tools |
 |---|---|
 | Ingestion | Python 3.12, httpx |
-| Platform | Databricks Free Edition: Unity Catalog, Volumes, Delta Lake, Auto Loader, Lakeflow Jobs |
+| Platform | Databricks Free Edition: Unity Catalog, Volumes, Delta Lake, Lakeflow Jobs |
 | Transformation | dbt Core + dbt-databricks |
 | Engineering | uv, ruff, pre-commit, Databricks Asset Bundles, GitHub Actions |
 
 ## Roadmap
 
-| Block | Scope | Status |
-|---|---|---|
-| A — Foundation | Repository, tooling, Databricks setup | ✅ Done |
-| B — Know the data | API exploration, game cohort | 🔄 In progress |
-| C — Ingestion | Collectors, scheduling, historical backfill | ⏳ |
-| D — Bronze | Auto Loader | ⏳ |
-| E — dbt | Staging, price snapshot (SCD2), promotion events, CI | ⏳ |
-| F — Analysis | Gold marts, hypothesis testing, final write-up | ⏳ |
-
-Progress is tracked in the [issues](../../issues) and [milestones](../../milestones).
+| Step | Status |
+|---|---|
+| Foundation (repo, tooling, Databricks) | ✅ |
+| API exploration | ✅ |
+| Ranking history ingestion | 🔄 |
+| Bronze layer | ⏳ |
+| dbt staging | ⏳ |
+| dbt marts | ⏳ |
+| Weekly automation + CI | ⏳ |
+| Dashboard + findings | ⏳ |
 
 ## Getting started
 
-**Prerequisites:** [uv](https://docs.astral.sh/uv/), Git and a [Steam Web API key](https://steamcommunity.com/dev/apikey).
-
 ```bash
-git clone https://github.com/arthurdurso/steam-promo-impact.git
-cd steam-promo-impact
-
-uv sync                        # creates .venv with Python 3.12 and dev tools
-uv run pre-commit install      # enables the git hooks
-
-cp .env.example .env           # then fill in your API keys
+git clone https://github.com/arthurdurso/steam-bestsellers-decade.git
+cd steam-bestsellers-decade
+uv sync
+uv run pre-commit install
+uv run python ingestion/fetch_top_sellers.py   # ~15 min, resumable
 ```
 
 ## Documentation
 
-- [Product requirements (PRD)](docs/prd.md) (in Portuguese): scope, data sources, metric definitions, hypotheses and risks. Section 18 explains why the project moved from sales estimates to a fact-only design.
+- [PRD](docs/prd.md) (in Portuguese): questions, data source, dbt model plan.
+- [Endpoint decisions](docs/decisions/001-endpoints.md) (in Portuguese).
